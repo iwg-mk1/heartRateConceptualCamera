@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Heart Rate Triggered Camera</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { background: #121212; color: #fff; height: 100vh; display: flex; flex-direction: column; }
+    
+    /* Viewfinder container */
+    .viewport {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      overflow: hidden;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    video, #capturedImage {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #capturedImage {
+      position: absolute;
+      top: 0; left: 0;
+      display: none;
+    }
+
+    /* Live HUD overlay */
+    .hud {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 12px 18px;
+      border-radius: 24px;
+      backdrop-filter: blur(8px);
+    }
+    .metric { display: flex; flex-direction: column; }
+    .metric-label { font-size: 11px; text-transform: uppercase; color: #aaa; }
+    .metric-val { font-size: 24px; font-weight: bold; }
+    .bpm-highlight { color: #ff4757; }
+
+    /* Control Panel */
+    .controls {
+      background: #1e1e1e;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border-top-left-radius: 16px;
+      border-top-right-radius: 16px;
+    }
+    .input-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    input[type="number"] {
+      width: 80px;
+      padding: 8px;
+      font-size: 18px;
+      text-align: center;
+      background: #2a2a2a;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 8px;
+    }
+    button {
+      padding: 14px;
+      font-size: 16px;
+      font-weight: bold;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .btn-connect { background: #2ed573; color: #000; }
+    .btn-reset { background: #1e90ff; color: #fff; display: none; }
+    .status-text { text-align: center; font-size: 13px; color: #888; }
+  </style>
+</head>
+<body>
+
+  <div class="viewport">
+    <video id="cameraPreview" autoplay playsinline muted></video>
+    <img id="capturedImage" alt="Captured Frame" />
+    
+    <div class="hud">
+      <div class="metric">
+        <span class="metric-label">Heart Rate</span>
+        <span class="metric-val bpm-highlight"><span id="bpmDisplay">--</span> BPM</span>
+      </div>
+      <div class="metric" style="text-align: right;">
+        <span class="metric-label">Status</span>
+        <span class="metric-val" id="stateDisplay" style="font-size: 16px;">DISARMED</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="input-row">
+      <label for="thresholdInput">Trigger BPM Threshold:</label>
+      <input type="number" id="thresholdInput" value="110" min="50" max="220" />
+    </div>
+
+    <button id="connectBtn" class="btn-connect">Connect Watch & Start Camera</button>
+    <button id="resetBtn" class="btn-reset">Reset & Arm Next Photo</button>
+    <p id="statusMsg" class="status-text">Set threshold, then connect to begin.</p>
+  </div>
+
+  <canvas id="snapshotCanvas" style="display: none;"></canvas>
+
+  <script>
+    const video = document.getElementById('cameraPreview');
+    const capturedImg = document.getElementById('capturedImage');
+    const canvas = document.getElementById('snapshotCanvas');
+    const bpmDisplay = document.getElementById('bpmDisplay');
+    const stateDisplay = document.getElementById('stateDisplay');
+    const statusMsg = document.getElementById('statusMsg');
+    const thresholdInput = document.getElementById('thresholdInput');
+    const connectBtn = document.getElementById('connectBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    let currentBpm = null;
+    let isArmed = false;
+
+    // 1. Initialize phone rear camera
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        statusMsg.innerText = 'Camera access denied or unavailable.';
+        console.error(err);
+      }
+    }
+
+    // 2. Connect to Pixel Watch BLE Heart Rate Service
+    async function connectWatch() {
+      try {
+        statusMsg.innerText = 'Scanning for Pixel Watch...';
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: ['heart_rate'] }]
+        });
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService('heart_rate');
+        const characteristic = await service.getCharacteristic('heart_rate_measurement');
+
+        await characteristic.startNotifications();
+        characteristic.addEventListener('characteristicvaluechanged', handleHeartRateData);
+
+        connectBtn.style.display = 'none';
+        isArmed = true;
+        updateState('ARMED', '#2ed573');
+        statusMsg.innerText = 'Connected. Waiting for threshold BPM...';
+      } catch (err) {
+        statusMsg.innerText = 'BLE Connection failed: ' + err.message;
+        console.error(err);
+      }
+    }
+
+    // 3. Parse Heart Rate GATT Packet (0x2A37)
+    function handleHeartRateData(event) {
+      const value = event.target.value;
+      const flags = value.getUint8(0);
+      
+      // If bit 0 of flags is 0, BPM is 8-bit (uint8 at offset 1)
+      // If bit 0 is 1, BPM is 16-bit (uint16 at offset 1)
+      const is16Bit = (flags & 0x01) !== 0;
+      currentBpm = is16Bit ? value.getUint16(1, true) : value.getUint8(1);
+      
+      bpmDisplay.innerText = currentBpm;
+
+      // Check shutter trigger
+      const threshold = parseInt(thresholdInput.value, 10);
+      if (isArmed && currentBpm >= threshold) {
+        triggerShutter();
+      }
+    }
+
+    // 4. Trigger shutter and freeze frame
+    function triggerShutter() {
+      isArmed = false;
+      updateState('TRIGGERED', '#ffa502');
+
+      // Draw active video frame into hidden canvas
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Render image preview
+      const dataUrl = canvas.toDataURL('image/jpeg');
+      capturedImg.src = dataUrl;
+      capturedImg.style.display = 'block';
+
+      updateState('CAPTURED', '#ff4757');
+      statusMsg.innerText = `Photo taken at ${currentBpm} BPM!`;
+      resetBtn.style.display = 'block';
+    }
+
+    // 5. Reset button handler to re-arm
+    resetBtn.addEventListener('click', () => {
+      capturedImg.style.display = 'none';
+      resetBtn.style.display = 'none';
+      isArmed = true;
+      updateState('ARMED', '#2ed573');
+      statusMsg.innerText = 'Armed. Waiting for threshold BPM...';
+    });
+
+    connectBtn.addEventListener('click', async () => {
+      await startCamera();
+      await connectWatch();
+    });
+
+    function updateState(text, color) {
+      stateDisplay.innerText = text;
+      stateDisplay.style.color = color;
+    }
+  </script>
+</body>
+</html>
