@@ -132,6 +132,20 @@
     let currentBpm = null;
     let isArmed = false;
 
+    window.addEventListener('DOMContentLoaded', () => {
+  if (!window.isSecureContext) {
+    statusMsg.innerText = 'Error: Must run in a Secure Context (HTTPS or localhost).';
+    return;
+  }
+  
+  if (!navigator.bluetooth) {
+    statusMsg.innerText = 'Error: Web Bluetooth is not supported here. Open this page in standalone Chrome on Android (not inside an in-app browser/editor).';
+    return;
+  }
+
+  statusMsg.innerText = 'Environment ready. Ready to connect.';
+});
+
     // 1. Initialize phone rear camera
     async function startCamera() {
       try {
