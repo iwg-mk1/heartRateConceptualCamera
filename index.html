@@ -3,59 +3,90 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>Heart Rate Triggered Camera</title>
+  <title>Heart Rate Camera Suite</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-    body { background: #121212; color: #fff; height: 100vh; display: flex; flex-direction: column; }
-    
+    body { background: #121212; color: #fff; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Top Navigation Tabs */
+    nav {
+      display: flex;
+      background: #1c1c1e;
+      border-bottom: 1px solid #2c2c2e;
+      z-index: 20;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 14px 10px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border: none;
+      background: transparent;
+      color: #8e8e93;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s ease;
+    }
+    .tab-btn.active {
+      color: #30d158;
+      border-bottom-color: #30d158;
+    }
+
+    /* Viewport Area */
     .viewport {
       position: relative;
       flex: 1;
       width: 100%;
-      overflow: hidden;
       background: #000;
+      overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
     }
-    video, #capturedImage {
+    video, #targetCapturedImage {
       width: 100%;
       height: 100%;
       object-fit: cover;
     }
-    #capturedImage {
+    #targetCapturedImage {
       position: absolute;
       top: 0; left: 0;
       display: none;
     }
 
+    /* Live HUD */
     .hud {
       position: absolute;
-      top: 16px;
-      left: 16px;
-      right: 16px;
+      top: 16px; left: 16px; right: 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.65);
       padding: 12px 18px;
-      border-radius: 24px;
+      border-radius: 20px;
       backdrop-filter: blur(8px);
+      z-index: 10;
     }
     .metric { display: flex; flex-direction: column; }
-    .metric-label { font-size: 11px; text-transform: uppercase; color: #aaa; }
-    .metric-val { font-size: 24px; font-weight: bold; }
-    .bpm-highlight { color: #ff4757; }
+    .metric-label { font-size: 11px; text-transform: uppercase; color: #a1a1a6; }
+    .metric-val { font-size: 22px; font-weight: 700; }
+    .bpm-val { color: #ff453a; }
 
-    .controls {
-      background: #1e1e1e;
-      padding: 20px;
+    /* Control Sheet */
+    .controls-panel {
+      background: #1c1c1e;
+      padding: 16px 20px 24px;
       display: flex;
       flex-direction: column;
       gap: 12px;
-      border-top-left-radius: 16px;
-      border-top-right-radius: 16px;
+      border-top: 1px solid #2c2c2e;
+      z-index: 20;
     }
+    .page-view { display: none; flex-direction: column; gap: 12px; }
+    .page-view.active { display: flex; }
+
     .input-row {
       display: flex;
       justify-content: space-between;
@@ -66,91 +97,196 @@
       padding: 8px;
       font-size: 18px;
       text-align: center;
-      background: #2a2a2a;
+      background: #2c2c2e;
       color: #fff;
-      border: 1px solid #444;
+      border: 1px solid #3a3a3c;
       border-radius: 8px;
     }
-    button {
+    button.action-btn {
       padding: 14px;
-      font-size: 16px;
-      font-weight: bold;
+      font-size: 15px;
+      font-weight: 600;
       border: none;
-      border-radius: 10px;
+      border-radius: 12px;
       cursor: pointer;
     }
-    .btn-connect { background: #2ed573; color: #000; }
-    .btn-download { background: #ffa502; color: #000; display: none; }
-    .btn-reset { background: #1e90ff; color: #fff; display: none; }
-    .action-group { display: flex; gap: 10px; }
-    .action-group button { flex: 1; }
-    .status-text { text-align: center; font-size: 13px; color: #888; }
+    .btn-connect { background: #30d158; color: #000; }
+    .btn-download { background: #ff9f0a; color: #000; }
+    .btn-reset { background: #0a84ff; color: #fff; }
+    .btn-record { background: #ff453a; color: #fff; }
+    .btn-stop { background: #ffd60a; color: #000; }
+    
+    .btn-row { display: flex; gap: 10px; }
+    .btn-row button { flex: 1; }
+    .status-text { text-align: center; font-size: 13px; color: #8e8e93; }
+
+    /* Session Results Overlay Modal */
+    #resultsModal {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.92);
+      backdrop-filter: blur(10px);
+      display: none;
+      flex-direction: column;
+      padding: 20px;
+      overflow-y: auto;
+      z-index: 30;
+    }
+    #resultsModal h2 { font-size: 18px; margin-bottom: 14px; text-align: center; }
+    .gallery-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .result-card {
+      background: #1c1c1e;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #2c2c2e;
+      display: flex;
+      flex-direction: column;
+    }
+    .result-card img { width: 100%; height: auto; display: block; }
+    .card-meta {
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-meta .title { font-weight: bold; font-size: 15px; }
+    .card-meta button {
+      padding: 8px 14px;
+      background: #0a84ff;
+      border: none;
+      color: #fff;
+      font-weight: 600;
+      border-radius: 8px;
+    }
   </style>
 </head>
 <body>
 
+  <!-- Top Page Tabs -->
+  <nav>
+    <button class="tab-btn active" id="tabTarget" onclick="switchPage('target')">Target BPM</button>
+    <button class="tab-btn" id="tabSession" onclick="switchPage('session')">Session (Min/Med/Max)</button>
+  </nav>
+
+  <!-- Camera Viewport -->
   <div class="viewport">
     <video id="cameraPreview" autoplay playsinline muted></video>
-    <img id="capturedImage" alt="Captured Frame" />
-    
+    <img id="targetCapturedImage" alt="Captured Frame" />
+
     <div class="hud">
       <div class="metric">
         <span class="metric-label">Heart Rate</span>
-        <span class="metric-val bpm-highlight"><span id="bpmDisplay">--</span> BPM</span>
+        <span class="metric-val bpm-val"><span id="bpmDisplay">--</span> BPM</span>
       </div>
       <div class="metric" style="text-align: right;">
         <span class="metric-label">Status</span>
-        <span class="metric-val" id="stateDisplay" style="font-size: 16px;">DISARMED</span>
+        <span class="metric-val" id="stateDisplay" style="font-size: 15px;">DISARMED</span>
       </div>
+    </div>
+
+    <!-- Results Modal for Min / Median / Max captures -->
+    <div id="resultsModal">
+      <h2>Session Summary (Min / Median / Max)</h2>
+      <div class="gallery-grid" id="galleryContainer"></div>
+      <button class="action-btn btn-reset" onclick="closeResults()">Done / Clear Session</button>
     </div>
   </div>
 
-  <div class="controls">
-    <div class="input-row">
-      <label for="targetInput">Target BPM (Hit or Pass-Through):</label>
-      <input type="number" id="targetInput" value="110" min="40" max="220" />
+  <!-- Bottom Controls -->
+  <div class="controls-panel">
+    <!-- Global Connect Button (shared) -->
+    <button id="connectBtn" class="action-btn btn-connect" onclick="initHardware()">Connect Pixel Watch & Camera</button>
+
+    <!-- Page 1: Target Shutter View -->
+    <div id="pageTarget" class="page-view active">
+      <div class="input-row">
+        <label for="targetInput">Trigger Target BPM:</label>
+        <input type="number" id="targetInput" value="110" min="40" max="220" />
+      </div>
+
+      <div class="btn-row" id="targetActionGroup" style="display: none;">
+        <button id="downloadTargetBtn" class="action-btn btn-download">Download Image</button>
+        <button id="resetTargetBtn" class="action-btn btn-reset">Reset & Arm</button>
+      </div>
     </div>
 
-    <button id="connectBtn" class="btn-connect">Connect Watch & Start Camera</button>
-    
-    <div class="action-group">
-      <button id="downloadBtn" class="btn-download">Download Image</button>
-      <button id="resetBtn" class="btn-reset">Reset & Arm Next</button>
+    <!-- Page 2: Session Analyzer View -->
+    <div id="pageSession" class="page-view">
+      <div class="btn-row">
+        <button id="recordBtn" class="action-btn btn-record" onclick="toggleSessionRecording()" disabled>Start Session Recording</button>
+      </div>
+      <p id="sessionStats" class="status-text" style="color: #ff9f0a;">Recorded frames: 0</p>
     </div>
 
-    <p id="statusMsg" class="status-text">Set target, then connect to begin.</p>
+    <p id="statusMsg" class="status-text">Tap Connect to begin.</p>
   </div>
 
   <canvas id="snapshotCanvas" style="display: none;"></canvas>
 
   <script>
     const video = document.getElementById('cameraPreview');
-    const capturedImg = document.getElementById('capturedImage');
+    const targetImg = document.getElementById('targetCapturedImage');
     const canvas = document.getElementById('snapshotCanvas');
     const bpmDisplay = document.getElementById('bpmDisplay');
     const stateDisplay = document.getElementById('stateDisplay');
     const statusMsg = document.getElementById('statusMsg');
-    const targetInput = document.getElementById('targetInput');
     const connectBtn = document.getElementById('connectBtn');
-    const downloadBtn = document.getElementById('downloadBtn');
-    const resetBtn = document.getElementById('resetBtn');
+    
+    // Target Mode Controls
+    const targetInput = document.getElementById('targetInput');
+    const targetActionGroup = document.getElementById('targetActionGroup');
+    const downloadTargetBtn = document.getElementById('downloadTargetBtn');
+    const resetTargetBtn = document.getElementById('resetTargetBtn');
 
+    // Session Mode Controls
+    const recordBtn = document.getElementById('recordBtn');
+    const sessionStats = document.getElementById('sessionStats');
+    const resultsModal = document.getElementById('resultsModal');
+    const galleryContainer = document.getElementById('galleryContainer');
+
+    // State Variables
+    let activePage = 'target'; // 'target' | 'session'
+    let hardwareReady = false;
     let currentBpm = null;
     let previousBpm = null;
-    let isArmed = false;
-    let latestDataUrl = null;
+    let isTargetArmed = false;
+    let latestTargetDataUrl = null;
 
-    // Check secure environment early
-    window.addEventListener('DOMContentLoaded', () => {
-      if (!window.isSecureContext) {
-        statusMsg.innerText = 'Requires HTTPS or localhost.';
-      } else if (!navigator.bluetooth) {
-        statusMsg.innerText = 'Web Bluetooth not supported in this browser. Use Chrome on Android.';
+    // Session Buffer
+    let isSessionRecording = false;
+    let sessionBuffer = []; // [{ bpm, canvasDataUrl, timestamp }]
+
+    // Tab Navigation
+    function switchPage(page) {
+      activePage = page;
+      document.getElementById('tabTarget').classList.toggle('active', page === 'target');
+      document.getElementById('tabSession').classList.toggle('active', page === 'session');
+      document.getElementById('pageTarget').classList.toggle('active', page === 'target');
+      document.getElementById('pageSession').classList.toggle('active', page === 'session');
+
+      if (page === 'target') {
+        targetImg.style.display = latestTargetDataUrl ? 'block' : 'none';
+        if (hardwareReady && !latestTargetDataUrl) {
+          isTargetArmed = true;
+          updateState('ARMED', '#30d158');
+        }
+      } else {
+        targetImg.style.display = 'none';
+        if (!isSessionRecording) {
+          updateState(hardwareReady ? 'READY' : 'DISARMED', '#8e8e93');
+        }
       }
-    });
+    }
 
-    async function startCamera() {
+    // Hardware Init (Camera + BLE)
+    async function initHardware() {
       try {
+        statusMsg.innerText = 'Requesting camera...';
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } },
           audio: false
@@ -159,124 +295,215 @@
         video.setAttribute('playsinline', '');
         video.setAttribute('webkit-playsinline', '');
         await video.play();
-      } catch (err) {
-        statusMsg.innerText = 'Camera error: ' + err.message;
-        console.error(err);
-      }
-    }
 
-    async function connectWatch() {
-      try {
-        statusMsg.innerText = 'Scanning for Pixel Watch...';
+        statusMsg.innerText = 'Connecting to Pixel Watch...';
         const device = await navigator.bluetooth.requestDevice({
           filters: [{ services: ['heart_rate'] }]
         });
-
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService('heart_rate');
         const characteristic = await service.getCharacteristic('heart_rate_measurement');
 
         await characteristic.startNotifications();
-        characteristic.addEventListener('characteristicvaluechanged', handleHeartRateData);
+        characteristic.addEventListener('characteristicvaluechanged', onHeartRateUpdate);
 
+        hardwareReady = true;
         connectBtn.style.display = 'none';
-        isArmed = true;
-        updateState('ARMED', '#2ed573');
-        statusMsg.innerText = `Armed. Waiting to hit/cross ${targetInput.value} BPM...`;
+        recordBtn.disabled = false;
+
+        if (activePage === 'target') {
+          isTargetArmed = true;
+          updateState('ARMED', '#30d158');
+        } else {
+          updateState('READY', '#0a84ff');
+        }
+        statusMsg.innerText = 'Connected. Live telemetry streaming.';
       } catch (err) {
-        statusMsg.innerText = 'BLE Connection failed: ' + err.message;
+        statusMsg.innerText = 'Init failed: ' + err.message;
         console.error(err);
       }
     }
 
-    function handleHeartRateData(event) {
+    // Universal Heart Rate Handler
+    function onHeartRateUpdate(event) {
       const value = event.target.value;
       const flags = value.getUint8(0);
       const is16Bit = (flags & 0x01) !== 0;
-      
       const newBpm = is16Bit ? value.getUint16(1, true) : value.getUint8(1);
+
       bpmDisplay.innerText = newBpm;
 
-      const target = parseInt(targetInput.value, 10);
-
-      if (isArmed) {
-        // Trigger condition 1: Exact hit
+      // Pipeline 1: Target BPM Check
+      if (activePage === 'target' && isTargetArmed) {
+        const target = parseInt(targetInput.value, 10);
         const exactHit = (newBpm === target);
-
-        // Trigger condition 2: Pass-through (jumped over the target while rising or falling)
         let passedThrough = false;
         if (previousBpm !== null) {
-          const crossedGoingUp = (previousBpm < target && newBpm > target);
-          const crossedGoingDown = (previousBpm > target && newBpm < target);
-          passedThrough = crossedGoingUp || crossedGoingDown;
+          passedThrough = (previousBpm < target && newBpm > target) || (previousBpm > target && newBpm < target);
         }
 
         if (exactHit || passedThrough) {
           currentBpm = newBpm;
-          triggerShutter();
+          triggerTargetShutter();
         }
+      }
+
+      // Pipeline 2: Session Stream Sampling
+      if (isSessionRecording) {
+        captureSessionSample(newBpm);
       }
 
       previousBpm = newBpm;
       currentBpm = newBpm;
     }
 
-    function triggerShutter() {
-      isArmed = false;
-      updateState('TRIGGERED', '#ffa502');
+    // --- PIPELINE 1: TARGET SHUTTER METHODS ---
+    function triggerTargetShutter() {
+      isTargetArmed = false;
+      updateState('CAPTURED', '#ff453a');
 
-      // Capture frame to canvas
       canvas.width = video.videoWidth || 1280;
       canvas.height = video.videoHeight || 720;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // Clean metadata Stamp: Render only current BPM & timestamp (no debug triggers)
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      // Clean stamp
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
       ctx.fillRect(20, canvas.height - 70, 180, 50);
       ctx.fillStyle = '#ffffff';
       ctx.font = '22px sans-serif';
       ctx.fillText(`${currentBpm} BPM`, 35, canvas.height - 38);
 
-      latestDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      capturedImg.src = latestDataUrl;
-      capturedImg.style.display = 'block';
+      latestTargetDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      targetImg.src = latestTargetDataUrl;
+      targetImg.style.display = 'block';
 
-      updateState('CAPTURED', '#ff4757');
       statusMsg.innerText = `Photo taken at ${currentBpm} BPM!`;
-      
-      downloadBtn.style.display = 'block';
-      resetBtn.style.display = 'block';
+      targetActionGroup.style.display = 'flex';
     }
 
-    // Download action
-    downloadBtn.addEventListener('click', () => {
-      if (!latestDataUrl) return;
-      const link = document.createElement('a');
-      link.href = latestDataUrl;
-      link.download = `heart_rate_${currentBpm}bpm_${Date.now()}.jpg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    downloadTargetBtn.addEventListener('click', () => {
+      if (!latestTargetDataUrl) return;
+      downloadImage(latestTargetDataUrl, `heart_rate_${currentBpm}bpm.jpg`);
     });
 
-    // Reset action
-    resetBtn.addEventListener('click', () => {
-      capturedImg.style.display = 'none';
-      downloadBtn.style.display = 'none';
-      resetBtn.style.display = 'none';
-      
-      // Update baseline to current BPM to prevent instant trigger on same frame
+    resetTargetBtn.addEventListener('click', () => {
+      targetImg.style.display = 'none';
+      targetActionGroup.style.display = 'none';
+      latestTargetDataUrl = null;
       previousBpm = currentBpm;
-      isArmed = true;
-      updateState('ARMED', '#2ed573');
+      isTargetArmed = true;
+      updateState('ARMED', '#30d158');
       statusMsg.innerText = `Armed. Waiting to hit/cross ${targetInput.value} BPM...`;
     });
 
-    connectBtn.addEventListener('click', async () => {
-      await startCamera();
-      await connectWatch();
-    });
+    // --- PIPELINE 2: MIN / MEDIAN / MAX SESSION METHODS ---
+    function toggleSessionRecording() {
+      if (!isSessionRecording) {
+        // Start Recording
+        sessionBuffer = [];
+        isSessionRecording = true;
+        recordBtn.innerText = 'Stop & Find Min / Med / Max';
+        recordBtn.className = 'action-btn btn-stop';
+        updateState('RECORDING', '#ff453a');
+        sessionStats.innerText = 'Recording live frames...';
+      } else {
+        // Stop & Analyze
+        isSessionRecording = false;
+        recordBtn.innerText = 'Start Session Recording';
+        recordBtn.className = 'action-btn btn-record';
+        updateState('READY', '#0a84ff');
+        processSessionData();
+      }
+    }
+
+    // Capture an un-watermarked raw frame snapshot into session RAM
+    function captureSessionSample(bpm) {
+      if (!video.videoWidth) return;
+
+      const memCanvas = document.createElement('canvas');
+      memCanvas.width = video.videoWidth;
+      memCanvas.height = video.videoHeight;
+      const ctx = memCanvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, memCanvas.width, memCanvas.height);
+
+      sessionBuffer.push({
+        bpm: bpm,
+        canvas: memCanvas,
+        timestamp: Date.now()
+      });
+
+      sessionStats.innerText = `Recorded frames: ${sessionBuffer.length}`;
+    }
+
+    // Find Minimum, Median, and Peak readings
+    function processSessionData() {
+      if (sessionBuffer.length === 0) {
+        statusMsg.innerText = 'No frames were recorded during this session.';
+        return;
+      }
+
+      // Sort chronological frames by heart rate ascending
+      const sorted = [...sessionBuffer].sort((a, b) => a.bpm - b.bpm);
+
+      const minItem = sorted[0];
+      const maxItem = sorted[sorted.length - 1];
+      const medianIndex = Math.floor(sorted.length / 2);
+      const medianItem = sorted[medianIndex];
+
+      const results = [
+        { title: 'Lowest (Min) HR', item: minItem },
+        { title: 'Median HR', item: medianItem },
+        { title: 'Peak (Max) HR', item: maxItem }
+      ];
+
+      galleryContainer.innerHTML = '';
+
+      results.forEach(res => {
+        // Render watermark on the canvas before generating dataUrl
+        const c = res.item.canvas;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(20, c.height - 70, 240, 50);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '22px sans-serif';
+        ctx.fillText(`${res.item.bpm} BPM (${res.title.split(' ')[0]})`, 35, c.height - 38);
+
+        const dataUrl = c.toDataURL('image/jpeg', 0.95);
+
+        // Build DOM element card
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.innerHTML = `
+          <img src="${dataUrl}" alt="${res.title}" />
+          <div class="card-meta">
+            <div>
+              <div class="title">${res.title}</div>
+              <div style="color: #ff453a; font-weight: bold;">${res.item.bpm} BPM</div>
+            </div>
+            <button onclick="downloadImage('${dataUrl}', '${res.title.replace(/\s+/g, '_')}_${res.item.bpm}bpm.jpg')">Save</button>
+          </div>
+        `;
+        galleryContainer.appendChild(card);
+      });
+
+      resultsModal.style.display = 'flex';
+    }
+
+    function closeResults() {
+      resultsModal.style.display = 'none';
+      sessionBuffer = [];
+      sessionStats.innerText = 'Recorded frames: 0';
+    }
+
+    function downloadImage(dataUrl, filename) {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
 
     function updateState(text, color) {
       stateDisplay.innerText = text;
