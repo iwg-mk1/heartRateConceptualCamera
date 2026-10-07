@@ -45,14 +45,19 @@
       align-items: center;
       justify-content: center;
     }
-    video, #targetCapturedImage {
+    video {
       width: 100%;
       height: 100%;
       object-fit: cover;
     }
     #targetCapturedImage {
       position: absolute;
-      top: 0; left: 0;
+      top: 0; 
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
       display: none;
     }
 
@@ -172,7 +177,12 @@
       display: flex;
       flex-direction: column;
     }
-    .result-card img { width: 100%; height: auto; display: block; }
+    .result-card img { 
+      width: 100%; 
+      height: auto; 
+      object-fit: contain;
+      display: block; 
+    }
     .card-meta {
       padding: 12px 14px;
       display: flex;
@@ -290,7 +300,7 @@
     let previousBpm = null;
     let isTargetArmed = false;
     let latestTargetDataUrl = null;
-    let captionOrientation = 'portrait'; // 'portrait' | 'landscape'
+    let captionOrientation = 'portrait';
 
     // Session Buffer
     let isSessionRecording = false;
@@ -302,34 +312,50 @@
       document.getElementById('btnLandscape').classList.toggle('active', mode === 'landscape');
     }
 
-    // Helper: Draws the BPM badge based on selected orientation
-    function drawBpmOverlay(ctx, width, height, bpmText) {
-      ctx.save();
-      const badgeText = `${bpmText} BPM`;
-      ctx.font = 'bold 26px sans-serif';
-      const textMetrics = ctx.measureText(badgeText);
-      const paddingX = 24;
-      const boxWidth = textMetrics.width + (paddingX * 2);
-      const boxHeight = 56;
-      const cornerRadius = 14;
+    // Helper: Draws the BPM badge proportionally with safe-area margins
+    // Helper: Draws the BPM badge and physically rotates it 90 degrees in landscape
+function drawBpmOverlay(ctx, width, height, bpmText) {
+  ctx.save();
+  const badgeText = `${bpmText} BPM`;
 
-      if (captionOrientation === 'portrait') {
-        // Standard bottom-left alignment
-        const x = 32;
-        const y = height - boxHeight - 32;
-        renderRoundedRect(ctx, x, y, boxWidth, boxHeight, cornerRadius);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(badgeText, x + paddingX, y + 37);
-      } else {
-        // Rotated 90 degrees clockwise (for viewing when holding phone in landscape)
-        ctx.translate(width - 32, height - boxHeight - 32);
-        ctx.rotate(-Math.PI / 2);
-        renderRoundedRect(ctx, 0, 0, boxWidth, boxHeight, cornerRadius);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(badgeText, paddingX, 37);
-      }
-      ctx.restore();
-    }
+  // Scale badge font and padding relative to canvas resolution
+  const baseDim = Math.min(width, height);
+  const fontSize = Math.max(28, Math.round(baseDim * 0.045));
+  ctx.font = `bold ${fontSize}px sans-serif`;
+
+  const textMetrics = ctx.measureText(badgeText);
+  const padX = Math.round(fontSize * 0.8);
+  const boxWidth = Math.round(textMetrics.width + padX * 2);
+  const boxHeight = Math.round(fontSize * 2.1);
+  const cornerRadius = Math.round(boxHeight * 0.25);
+
+  // Safe-area margins inward
+  const marginX = Math.round(width * 0.06);
+  const marginY = Math.round(height * 0.06);
+
+  if (captionOrientation === 'portrait') {
+    // Normal upright alignment at bottom-left
+    const x = marginX;
+    const y = height - boxHeight - marginY;
+    renderRoundedRect(ctx, x, y, boxWidth, boxHeight, cornerRadius);
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeText, x + padX, y + boxHeight / 2);
+  } else {
+    // Rotated 90 degrees counter-clockwise along the right edge
+    // When the phone is turned sideways (landscape), this reads upright
+    ctx.translate(width - marginX, height - marginY);
+    ctx.rotate(-Math.PI / 2);
+
+    // Draw origin-aligned relative to the rotated context
+    renderRoundedRect(ctx, 0, -boxHeight, boxWidth, boxHeight, cornerRadius);
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeText, padX, -boxHeight / 2);
+  }
+
+  ctx.restore();
+}
 
     function renderRoundedRect(ctx, x, y, w, h, r) {
       ctx.beginPath();
