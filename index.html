@@ -314,44 +314,50 @@
 
     // Helper: Draws the BPM badge proportionally with safe-area margins
     // Helper: Draws the BPM badge and physically rotates it 90 degrees in landscape
+// Helper: Draws the BPM badge and safely rotates it 90 degrees inside frame boundaries
 function drawBpmOverlay(ctx, width, height, bpmText) {
   ctx.save();
   const badgeText = `${bpmText} BPM`;
 
-  // Scale badge font and padding relative to canvas resolution
+  // Scale badge font and padding relative to the smallest canvas dimension
   const baseDim = Math.min(width, height);
-  const fontSize = Math.max(28, Math.round(baseDim * 0.045));
+  const fontSize = Math.max(26, Math.round(baseDim * 0.042));
   ctx.font = `bold ${fontSize}px sans-serif`;
 
   const textMetrics = ctx.measureText(badgeText);
   const padX = Math.round(fontSize * 0.8);
   const boxWidth = Math.round(textMetrics.width + padX * 2);
-  const boxHeight = Math.round(fontSize * 2.1);
+  const boxHeight = Math.round(fontSize * 2.0);
   const cornerRadius = Math.round(boxHeight * 0.25);
 
-  // Safe-area margins inward
-  const marginX = Math.round(width * 0.06);
-  const marginY = Math.round(height * 0.06);
+  // Safe margin inset (8% inward from frame boundary)
+  const insetX = Math.round(width * 0.08);
+  const insetY = Math.round(height * 0.08);
 
   if (captionOrientation === 'portrait') {
-    // Normal upright alignment at bottom-left
-    const x = marginX;
-    const y = height - boxHeight - marginY;
+    // Upright badge pinned to bottom-left
+    const x = insetX;
+    const y = height - boxHeight - insetY;
     renderRoundedRect(ctx, x, y, boxWidth, boxHeight, cornerRadius);
     ctx.fillStyle = '#ffffff';
     ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
     ctx.fillText(badgeText, x + padX, y + boxHeight / 2);
   } else {
-    // Rotated 90 degrees counter-clockwise along the right edge
-    // When the phone is turned sideways (landscape), this reads upright
-    ctx.translate(width - marginX, height - marginY);
-    ctx.rotate(-Math.PI / 2);
+    // Landscape: Rotate 90 degrees clockwise along the right edge
+    // Origin is shifted so the badge dimensions (boxWidth x boxHeight) remain 100% inside canvas
+    const x = width - insetX;
+    const y = height - insetY - boxWidth;
 
-    // Draw origin-aligned relative to the rotated context
-    renderRoundedRect(ctx, 0, -boxHeight, boxWidth, boxHeight, cornerRadius);
+    ctx.translate(x, y);
+    ctx.rotate(Math.PI / 2);
+
+    // Draw from (0, 0) inside the rotated coordinate matrix
+    renderRoundedRect(ctx, 0, 0, boxWidth, boxHeight, cornerRadius);
     ctx.fillStyle = '#ffffff';
     ctx.textBaseline = 'middle';
-    ctx.fillText(badgeText, padX, -boxHeight / 2);
+    ctx.textAlign = 'left';
+    ctx.fillText(badgeText, padX, boxHeight / 2);
   }
 
   ctx.restore();
