@@ -9,7 +9,7 @@
     body { background: #121212; color: #fff; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
     /* Top Navigation Tabs */
-    nav { 
+    nav {
       display: flex;
       background: #1c1c1e;
       border-bottom: 1px solid #2c2c2e;
@@ -102,6 +102,31 @@
       border: 1px solid #3a3a3c;
       border-radius: 8px;
     }
+
+    /* Orientation Toggle Selector */
+    .segmented-control {
+      display: flex;
+      background: #2c2c2e;
+      border-radius: 8px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .segmented-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      background: transparent;
+      color: #8e8e93;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .segmented-btn.active {
+      background: #636366;
+      color: #fff;
+    }
+
     button.action-btn {
       padding: 14px;
       font-size: 15px;
@@ -120,7 +145,7 @@
     .btn-row button { flex: 1; }
     .status-text { text-align: center; font-size: 13px; color: #8e8e93; }
 
-    /* Session Results Overlay Modal */
+    /* Session Results Modal */
     #resultsModal {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -167,13 +192,13 @@
 </head>
 <body>
 
-  <!-- Top Page Tabs -->
+  <!-- Top Navigation Tabs -->
   <nav>
     <button class="tab-btn active" id="tabTarget" onclick="switchPage('target')">Target BPM</button>
     <button class="tab-btn" id="tabSession" onclick="switchPage('session')">Session (Min/Med/Max)</button>
   </nav>
 
-  <!-- Camera Viewport -->
+  <!-- Viewport Area -->
   <div class="viewport">
     <video id="cameraPreview" autoplay playsinline muted></video>
     <img id="targetCapturedImage" alt="Captured Frame" />
@@ -189,7 +214,7 @@
       </div>
     </div>
 
-    <!-- Results Modal for Min / Median / Max captures -->
+    <!-- Results Modal for Session Analysis -->
     <div id="resultsModal">
       <h2>Session Summary (Min / Median / Max)</h2>
       <div class="gallery-grid" id="galleryContainer"></div>
@@ -199,10 +224,19 @@
 
   <!-- Bottom Controls -->
   <div class="controls-panel">
-    <!-- Global Connect Button (shared) -->
+    <!-- Global Connect Button -->
     <button id="connectBtn" class="action-btn btn-connect" onclick="initHardware()">Connect Pixel Watch & Camera</button>
 
-    <!-- Page 1: Target Shutter View -->
+    <!-- Caption Orientation Selector -->
+    <div class="input-row">
+      <span style="font-size: 14px; color: #aaa;">Caption Layout:</span>
+      <div class="segmented-control">
+        <button class="segmented-btn active" id="btnPortrait" onclick="setOrientation('portrait')">Portrait</button>
+        <button class="segmented-btn" id="btnLandscape" onclick="setOrientation('landscape')">Landscape</button>
+      </div>
+    </div>
+
+    <!-- Page 1: Target Mode -->
     <div id="pageTarget" class="page-view active">
       <div class="input-row">
         <label for="targetInput">Trigger Target BPM:</label>
@@ -215,7 +249,7 @@
       </div>
     </div>
 
-    <!-- Page 2: Session Analyzer View -->
+    <!-- Page 2: Session Mode -->
     <div id="pageSession" class="page-view">
       <div class="btn-row">
         <button id="recordBtn" class="action-btn btn-record" onclick="toggleSessionRecording()" disabled>Start Session Recording</button>
@@ -237,31 +271,78 @@
     const statusMsg = document.getElementById('statusMsg');
     const connectBtn = document.getElementById('connectBtn');
     
-    // Target Mode Controls
+    // Target Controls
     const targetInput = document.getElementById('targetInput');
     const targetActionGroup = document.getElementById('targetActionGroup');
     const downloadTargetBtn = document.getElementById('downloadTargetBtn');
     const resetTargetBtn = document.getElementById('resetTargetBtn');
 
-    // Session Mode Controls
+    // Session Controls
     const recordBtn = document.getElementById('recordBtn');
     const sessionStats = document.getElementById('sessionStats');
     const resultsModal = document.getElementById('resultsModal');
     const galleryContainer = document.getElementById('galleryContainer');
 
     // State Variables
-    let activePage = 'target'; // 'target' | 'session'
+    let activePage = 'target';
     let hardwareReady = false;
     let currentBpm = null;
     let previousBpm = null;
     let isTargetArmed = false;
     let latestTargetDataUrl = null;
+    let captionOrientation = 'portrait'; // 'portrait' | 'landscape'
 
     // Session Buffer
     let isSessionRecording = false;
-    let sessionBuffer = []; // [{ bpm, canvasDataUrl, timestamp }]
+    let sessionBuffer = [];
 
-    // Tab Navigation
+    function setOrientation(mode) {
+      captionOrientation = mode;
+      document.getElementById('btnPortrait').classList.toggle('active', mode === 'portrait');
+      document.getElementById('btnLandscape').classList.toggle('active', mode === 'landscape');
+    }
+
+    // Helper: Draws the BPM badge based on selected orientation
+    function drawBpmOverlay(ctx, width, height, bpmText) {
+      ctx.save();
+      const badgeText = `${bpmText} BPM`;
+      ctx.font = 'bold 26px sans-serif';
+      const textMetrics = ctx.measureText(badgeText);
+      const paddingX = 24;
+      const boxWidth = textMetrics.width + (paddingX * 2);
+      const boxHeight = 56;
+      const cornerRadius = 14;
+
+      if (captionOrientation === 'portrait') {
+        // Standard bottom-left alignment
+        const x = 32;
+        const y = height - boxHeight - 32;
+        renderRoundedRect(ctx, x, y, boxWidth, boxHeight, cornerRadius);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(badgeText, x + paddingX, y + 37);
+      } else {
+        // Rotated 90 degrees clockwise (for viewing when holding phone in landscape)
+        ctx.translate(width - 32, height - boxHeight - 32);
+        ctx.rotate(-Math.PI / 2);
+        renderRoundedRect(ctx, 0, 0, boxWidth, boxHeight, cornerRadius);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(badgeText, paddingX, 37);
+      }
+      ctx.restore();
+    }
+
+    function renderRoundedRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      ctx.fill();
+    }
+
     function switchPage(page) {
       activePage = page;
       document.getElementById('tabTarget').classList.toggle('active', page === 'target');
@@ -283,7 +364,6 @@
       }
     }
 
-    // Hardware Init (Camera + BLE)
     async function initHardware() {
       try {
         statusMsg.innerText = 'Requesting camera...';
@@ -324,7 +404,6 @@
       }
     }
 
-    // Universal Heart Rate Handler
     function onHeartRateUpdate(event) {
       const value = event.target.value;
       const flags = value.getUint8(0);
@@ -333,7 +412,6 @@
 
       bpmDisplay.innerText = newBpm;
 
-      // Pipeline 1: Target BPM Check
       if (activePage === 'target' && isTargetArmed) {
         const target = parseInt(targetInput.value, 10);
         const exactHit = (newBpm === target);
@@ -348,7 +426,6 @@
         }
       }
 
-      // Pipeline 2: Session Stream Sampling
       if (isSessionRecording) {
         captureSessionSample(newBpm);
       }
@@ -357,7 +434,6 @@
       currentBpm = newBpm;
     }
 
-    // --- PIPELINE 1: TARGET SHUTTER METHODS ---
     function triggerTargetShutter() {
       isTargetArmed = false;
       updateState('CAPTURED', '#ff453a');
@@ -367,12 +443,7 @@
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // Clean stamp
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-      ctx.fillRect(20, canvas.height - 70, 180, 50);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '22px sans-serif';
-      ctx.fillText(`${currentBpm} BPM`, 35, canvas.height - 38);
+      drawBpmOverlay(ctx, canvas.width, canvas.height, currentBpm);
 
       latestTargetDataUrl = canvas.toDataURL('image/jpeg', 0.95);
       targetImg.src = latestTargetDataUrl;
@@ -384,7 +455,7 @@
 
     downloadTargetBtn.addEventListener('click', () => {
       if (!latestTargetDataUrl) return;
-      downloadImage(latestTargetDataUrl, `heart_rate_${currentBpm}bpm.jpg`);
+      downloadImage(latestTargetDataUrl, `heart_rate_${currentBpm}bpm_${captionOrientation}.jpg`);
     });
 
     resetTargetBtn.addEventListener('click', () => {
@@ -397,10 +468,8 @@
       statusMsg.innerText = `Armed. Waiting to hit/cross ${targetInput.value} BPM...`;
     });
 
-    // --- PIPELINE 2: MIN / MEDIAN / MAX SESSION METHODS ---
     function toggleSessionRecording() {
       if (!isSessionRecording) {
-        // Start Recording
         sessionBuffer = [];
         isSessionRecording = true;
         recordBtn.innerText = 'Stop & Find Min / Med / Max';
@@ -408,7 +477,6 @@
         updateState('RECORDING', '#ff453a');
         sessionStats.innerText = 'Recording live frames...';
       } else {
-        // Stop & Analyze
         isSessionRecording = false;
         recordBtn.innerText = 'Start Session Recording';
         recordBtn.className = 'action-btn btn-record';
@@ -417,7 +485,6 @@
       }
     }
 
-    // Capture an un-watermarked raw frame snapshot into session RAM
     function captureSessionSample(bpm) {
       if (!video.videoWidth) return;
 
@@ -436,42 +503,33 @@
       sessionStats.innerText = `Recorded frames: ${sessionBuffer.length}`;
     }
 
-    // Find Minimum, Median, and Peak readings
     function processSessionData() {
       if (sessionBuffer.length === 0) {
-        statusMsg.innerText = 'No frames were recorded during this session.';
+        statusMsg.innerText = 'No frames recorded during this session.';
         return;
       }
 
-      // Sort chronological frames by heart rate ascending
       const sorted = [...sessionBuffer].sort((a, b) => a.bpm - b.bpm);
-
       const minItem = sorted[0];
       const maxItem = sorted[sorted.length - 1];
       const medianIndex = Math.floor(sorted.length / 2);
       const medianItem = sorted[medianIndex];
 
       const results = [
-        { title: 'Lowest (Min) HR', item: minItem },
-        { title: 'Median HR', item: medianItem },
-        { title: 'Peak (Max) HR', item: maxItem }
+        { title: 'Lowest (Min)', item: minItem },
+        { title: 'Median', item: medianItem },
+        { title: 'Peak (Max)', item: maxItem }
       ];
 
       galleryContainer.innerHTML = '';
 
       results.forEach(res => {
-        // Render watermark on the canvas before generating dataUrl
         const c = res.item.canvas;
         const ctx = c.getContext('2d');
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.fillRect(20, c.height - 70, 240, 50);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '22px sans-serif';
-        ctx.fillText(`${res.item.bpm} BPM (${res.title.split(' ')[0]})`, 35, c.height - 38);
+        
+        drawBpmOverlay(ctx, c.width, c.height, res.item.bpm);
 
         const dataUrl = c.toDataURL('image/jpeg', 0.95);
-
-        // Build DOM element card
         const card = document.createElement('div');
         card.className = 'result-card';
         card.innerHTML = `
